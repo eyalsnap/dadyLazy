@@ -1,52 +1,61 @@
 package com.es.dadylazy;
 
+import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
-import android.content.Intent;
 import android.media.AudioManager;
-import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.text.InputType;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.TextView;
+import android.widget.Toast;
 
 public class MainActivity extends AppCompatActivity {
 
-    private BluetoothAdapter adapter;
+    private BluetoothAdapter bluetoothAdapter;
     private WifiManager wifiManager;
     private AudioManager audioManager;
 
     private CheckBox btOnCheckBox,
-                    btOffCheckBox,
-                    gpsOnCheckBox,
-                    gpsOffCheckBox,
-                    wifiOnCheckBox,
-                    wifiOffCheckBox,
-                    soundOnCheckBox,
-                    soundOffCheckBox;
+            btOffCheckBox,
+            gpsOnCheckBox,
+            gpsOffCheckBox,
+            wifiOnCheckBox,
+            wifiOffCheckBox,
+            soundOnCheckBox,
+            soundOffCheckBox;
+
+    private EditText followNumberEditText,
+            followSecondsEditText;
+    private boolean editableMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        editableMode = false;
+
         initCheckBoxes();
 
         initAdapters();
-        
-        initObjects();
 
         initButtons();
 
+        ActivityCompat.requestPermissions(MainActivity.this, new String[] {Manifest.permission.ACCESS_FINE_LOCATION}, 123);
     }
 
     private void initAdapters() {
-        adapter = BluetoothAdapter.getDefaultAdapter();
-        wifiManager = (WifiManager)getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        audioManager = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
     }
 
@@ -59,20 +68,9 @@ public class MainActivity extends AppCompatActivity {
         wifiOffCheckBox = (CheckBox) findViewById(R.id.wifiOffCheckBox);
         soundOnCheckBox = (CheckBox) findViewById(R.id.soundOnCheckBox);
         soundOffCheckBox = (CheckBox) findViewById(R.id.soundOffCheckBox);
-    }
 
-    private void initObjects() {
-        try{
-            Thread.sleep(200);
-        }
-        catch (InterruptedException e) {}
-
-        btOnCheckBox.setChecked(adapter.isEnabled());
-        btOffCheckBox.setChecked(!adapter.isEnabled());
-        wifiOnCheckBox.setChecked(wifiManager.isWifiEnabled());
-        wifiOffCheckBox.setChecked(!wifiManager.isWifiEnabled());
-        soundOnCheckBox.setChecked(audioManager.isSpeakerphoneOn());
-        soundOffCheckBox.setChecked(!audioManager.isSpeakerphoneOn());
+        followNumberEditText = (EditText) findViewById(R.id.numberFollowEditText);
+        followSecondsEditText = (EditText) findViewById(R.id.secondsFollowEditText);
     }
 
     private void initButtons() {
@@ -80,14 +78,15 @@ public class MainActivity extends AppCompatActivity {
         onButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-//                if (!adapter.isEnabled())
-//                    adapter.enable();
-//                if (!wifiManager.isWifiEnabled())
-//                    wifiManager.setWifiEnabled(true);
+                if (!bluetoothAdapter.isEnabled() && btOnCheckBox.isChecked())
+                    bluetoothAdapter.enable();
+                if (!wifiManager.isWifiEnabled() && wifiOnCheckBox.isChecked())
+                    wifiManager.setWifiEnabled(true);
                 if (audioManager.isSpeakerphoneOn())
+                    //TODO the next command should make the phone noisy - dont work
                     audioManager.setSpeakerphoneOn(false);
-                turnGPSOn();
-                initObjects();
+                if (gpsOnCheckBox.isChecked())
+                    turnGPSOn();
             }
         });
 
@@ -95,42 +94,56 @@ public class MainActivity extends AppCompatActivity {
         offButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if (adapter.isEnabled())
-                    adapter.disable();
-                if (wifiManager.isWifiEnabled())
+                if (bluetoothAdapter.isEnabled() && btOffCheckBox.isChecked())
+                    bluetoothAdapter.disable();
+                if (wifiManager.isWifiEnabled() && wifiOffCheckBox.isChecked())
                     wifiManager.setWifiEnabled(false);
                 if (audioManager.isSpeakerphoneOn())
+                    //TODO the next command should make the phone on silence - dont work
                     audioManager.setSpeakerphoneOn(true);
-                turnGPSOff();
-                initObjects();
+                if (gpsOffCheckBox.isChecked())
+                    turnGPSOff();
+            }
+        });
+
+        TextView followTextView = (TextView) findViewById(R.id.followTextView);
+        followTextView.setOnLongClickListener(new View.OnLongClickListener() {
+            public boolean onLongClick(View arg0) {
+                if (editableMode) {
+                    followNumberEditText.setInputType(InputType.TYPE_NULL);
+                    followSecondsEditText.setInputType(InputType.TYPE_NULL);
+                    Toast.makeText(getApplicationContext(), "not editable", Toast.LENGTH_SHORT).show();
+                } else {
+                    followNumberEditText.setInputType(InputType.TYPE_CLASS_TEXT);
+                    followSecondsEditText.setInputType(InputType.TYPE_CLASS_TEXT);
+                    Toast.makeText(getApplicationContext(), "editable", Toast.LENGTH_SHORT).show();
+                }
+                editableMode = !editableMode;
+
+                return true;
             }
         });
     }
 
     private void turnGPSOn(){
-        String provider = Settings.Secure.getString(getContentResolver(), Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
 
-        if(!provider.contains("gps")){ //if gps is disabled
-            final Intent poke = new Intent();
-            poke.setClassName("com.android.settings", "com.android.settings.widget.SettingsAppWidgetProvider");
-            poke.addCategory(Intent.CATEGORY_ALTERNATIVE);
-            poke.setData(Uri.parse("3"));
-            sendBroadcast(poke);
-        }
+        if (isGpsInMode(true))
+            return;
 
+        //TODO: here should be the code that turn on the location
     }
 
     private void turnGPSOff(){
-        String provider = Settings.Secure.getString(getContentResolver(), Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
 
-        if(provider.contains("gps")){ //if gps is enabled
-            final Intent poke = new Intent();
-            poke.setClassName("com.android.settings", "com.android.settings.widget.SettingsAppWidgetProvider");
-            poke.addCategory(Intent.CATEGORY_ALTERNATIVE);
-            poke.setData(Uri.parse("3"));
-            sendBroadcast(poke);
-        }
+        if (isGpsInMode(false))
+            return;
+
+        //TODO: here should be the code that turn off the location
     }
 
+    private boolean isGpsInMode(boolean mode){
+        String provider = Settings.Secure.getString(getContentResolver(), Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
+        return mode == provider.contains("gps");
+    }
 
 }
